@@ -18,6 +18,13 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
 
+# جدول الرينجات الأصلية (Parent Pools)
+class ParentPool(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    prefix = db.Column(db.String(100), unique=True, nullable=False)
+    description = db.Column(db.String(255), nullable=False)
+
+# جدول الرينجات المستقطعة والربط
 class NetworkRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(50), nullable=False)
@@ -45,16 +52,18 @@ HTML_LAYOUT = """
 <html dir="rtl" lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>لوحة إدارة وتوثيق شبكة LuxeISP</title>
+    <title>إدارة شبكة LuxeISP وكتل IPv6</title>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
-        .container { max-width: 1250px; margin: 0 auto; }
+        .container { max-width: 1350px; margin: 0 auto; }
         .card { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #334155; }
         h1, h3 { color: #38bdf8; margin-top: 0; }
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 10px; }
-        input, button { padding: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 14px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
+        input, button, select { padding: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 14px; }
         button { background: #0284c7; cursor: pointer; border: none; font-weight: bold; }
         button:hover { background: #0369a1; }
+        .action-btn { background: #10b981; padding: 5px 10px; font-size: 12px; }
+        .action-btn:hover { background: #059669; }
         .danger-btn { background: #ef4444; padding: 6px 12px; }
         .danger-btn:hover { background: #dc2626; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
@@ -63,41 +72,74 @@ HTML_LAYOUT = """
         .tag { background: #0369a1; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
         .status-ok { background: #166534; color: #4ade80; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
         .status-conflict { background: #991b1b; color: #fca5a5; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .code { font-family: monospace; color: #4ade80; }
+        .code { font-family: monospace; color: #4ade80; font-weight: bold; }
         .header-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 20px; }
         .alert-error { background: #7f1d1d; color: #fca5a5; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #ef4444; }
+        .alert-success { background: #064e3b; color: #6ee7b7; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #10b981; }
     </style>
 </head>
 <body>
     <div class="container">
         {% if current_user.is_authenticated %}
         <div class="header-bar">
-            <h1>نظام إدارة الشبكة والتناظرات (IPv6 Inventory & Conflict Check)</h1>
+            <h1>نظام إدارة IPv6 المتقدم (Parent Pools & Subnets)</h1>
             <div>
                 أهلاً بك، <strong>{{ current_user.username }}</strong> | <a href="/logout" style="color:#ef4444; text-decoration:none;">تسجيل الخروج</a>
             </div>
         </div>
 
         {% if error_msg %}
-        <div class="alert-error">
-            ⚠️ <strong>تنبيه تضارب العناوين:</strong> {{ error_msg }}
+        <div class="alert-error">⚠️ {{ error_msg }}</div>
+        {% endif %}
+
+        {% if suggested %}
+        <div class="alert-success">
+            💡 <strong>العنوان الفارغ التالي المقتطع:</strong> <span class="code">{{ suggested }}</span> (تم تعبئته جاهزاً أدناه).
         </div>
         {% endif %}
 
+        <!-- قسم الرينجات الأصلية -->
         <div class="card">
-            <h3>1. استخراج أول IPv6 Subnet فارغ تلقائياً</h3>
-            <form method="POST" action="/suggest" style="display: flex; gap: 10px;">
-                <input type="text" name="parent" placeholder="الرينج الرئيسي (مثال: 2a0a:4340::/32)" required style="flex: 2;">
-                <input type="number" name="prefixlen" value="48" placeholder="التقسيم (48 أو 64)" required style="flex: 1;">
-                <button type="submit">حساب العنوان الفارغ</button>
+            <h3>1. الرينجات والكتل الأصلية (Parent Pools)</h3>
+            <form method="POST" action="/add_pool" style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" name="prefix" placeholder="الرينج الأصلي (مثال: 2a0a:4340::/29)" class="code" required style="flex: 2;">
+                <input type="text" name="description" placeholder="الوصف (مثال: Luxe Main Block RIPE)" required style="flex: 3;">
+                <button type="submit">إضافة رينج أصلي</button>
             </form>
-            {% if suggested %}
-            <p style="margin-top: 10px;">العنوان المقترح التالي: <span class="code">{{ suggested }}</span></p>
-            {% endif %}
+
+            <table>
+                <tr>
+                    <th>الرينج الأصلي Parent Prefix</th>
+                    <th>الوصف والملاحظات</th>
+                    <th>طلب عنوان فارغ جديد</th>
+                    <th>حذف Pool</th>
+                </tr>
+                {% for pool in pools %}
+                <tr>
+                    <td class="code">{{ pool.prefix }}</td>
+                    <td>{{ pool.description }}</td>
+                    <td>
+                        <form method="POST" action="/extract_from_pool" style="display: flex; gap: 5px; align-items: center;">
+                            <input type="hidden" name="pool_prefix" value="{{ pool.prefix }}">
+                            <select name="target_len" style="padding: 4px;">
+                                <option value="64">استخراج /64</option>
+                                <option value="48">استخراج /48</option>
+                                <option value="127">استخراج /127</option>
+                            </select>
+                            <button type="submit" class="action-btn">+ طلب عنوان فارغ</button>
+                        </form>
+                    </td>
+                    <td><a href="/delete_pool/{{ pool.id }}"><button class="danger-btn" style="padding:4px 8px;">حذف</button></a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="text-align:center;">لم تقم بإضافة رينجات أصلية بعد.</td></tr>
+                {% endfor %}
+            </table>
         </div>
 
+        <!-- قسم التوثيق وإضافة الخدمة -->
         <div class="card">
-            <h3>2. إضافة وتوثيق Interface / Route / Domain</h3>
+            <h3>2. إدخال وتوثيق الخدمة (Service / Interface / Domain)</h3>
             <form method="POST" action="/add">
                 <div class="form-grid">
                     <input type="text" name="code" placeholder="المعرف (L6730)" required>
@@ -108,12 +150,13 @@ HTML_LAYOUT = """
                     <input type="text" name="next_hop" placeholder="Next Hop (2a0a:4340::1)">
                     <input type="text" name="description" placeholder="الوصف (PPPOE-SERVER)">
                 </div>
-                <button type="submit" style="margin-top: 15px; width: 100%;">حفظ في قاعدة البيانات</button>
+                <button type="submit" style="margin-top: 15px; width: 100%;">حفظ الرينج في قاعدة البيانات</button>
             </form>
         </div>
 
+        <!-- الجدول النهائي -->
         <div class="card">
-            <h3>جدول توثيق الشبكة والداتا المربوطة</h3>
+            <h3>سجل الشبكة والخدمات المربوطة</h3>
             <table>
                 <tr>
                     <th>المعرف</th>
@@ -123,7 +166,7 @@ HTML_LAYOUT = """
                     <th>الدومين الإداري</th>
                     <th>Next-Hop</th>
                     <th>الوصف والوجهة</th>
-                    <th>حالة الرينج</th>
+                    <th>فحص التداخل</th>
                     <th>إجراء</th>
                 </tr>
                 {% for item in items %}
@@ -145,7 +188,7 @@ HTML_LAYOUT = """
                     <td><a href="/delete/{{ item.rec.id }}"><button class="danger-btn">حذف</button></a></td>
                 </tr>
                 {% else %}
-                <tr><td colspan="9" style="text-align:center;">لا توجد بيانات موثقة حالياً.</td></tr>
+                <tr><td colspan="9" style="text-align:center;">لا توجد خدمات موثقة بعد.</td></tr>
                 {% endfor %}
             </table>
         </div>
@@ -172,7 +215,6 @@ HTML_LAYOUT = """
 def get_records_with_conflicts():
     records = NetworkRecord.query.all()
     items = []
-    
     parsed_nets = []
     for r in records:
         try:
@@ -195,8 +237,9 @@ def get_records_with_conflicts():
 def index():
     if not current_user.is_authenticated:
         return render_template_string(HTML_LAYOUT)
+    pools = ParentPool.query.all()
     items = get_records_with_conflicts()
-    return render_template_string(HTML_LAYOUT, items=items)
+    return render_template_string(HTML_LAYOUT, pools=pools, items=items)
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -214,12 +257,54 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
+@app.route('/add_pool', methods=['POST'])
+@login_required
+def add_pool():
+    prefix_str = request.form.get('prefix')
+    desc = request.form.get('description')
+    try:
+        ipaddress.IPv6Network(prefix_str, strict=False)
+        new_pool = ParentPool(prefix=prefix_str, description=desc)
+        db.session.add(new_pool)
+        db.session.commit()
+    except Exception as e:
+        pools = ParentPool.query.all()
+        items = get_records_with_conflicts()
+        return render_template_string(HTML_LAYOUT, pools=pools, items=items, error_msg=f"خطأ في إضافة Pool: {str(e)}")
+    return redirect(url_for('index'))
+
+@app.route('/extract_from_pool', methods=['POST'])
+@login_required
+def extract_from_pool():
+    pool_prefix = request.form.get('pool_prefix')
+    target_len = int(request.form.get('target_len'))
+    pools = ParentPool.query.all()
+    items = get_records_with_conflicts()
+    records = NetworkRecord.query.all()
+    
+    try:
+        parent_net = ipaddress.IPv6Network(pool_prefix, strict=False)
+        used_nets = [ipaddress.IPv6Network(r.subnet, strict=False) for r in records]
+        
+        suggested = None
+        for sub in parent_net.subnets(new_prefix=target_len):
+            if not any(sub.overlaps(u) for u in used_nets):
+                suggested = str(sub)
+                break
+                
+        if not suggested:
+            return render_template_string(HTML_LAYOUT, pools=pools, items=items, error_msg="هذا الرينج ممتلئ بالكامل ولا توجد مساحة فارغة بهذا الحجم!")
+
+        return render_template_string(HTML_LAYOUT, pools=pools, items=items, suggested=suggested)
+    except Exception as e:
+        return render_template_string(HTML_LAYOUT, pools=pools, items=items, error_msg=f"خطأ في الحساب: {str(e)}")
+
 @app.route('/add', methods=['POST'])
 @login_required
 def add():
     subnet_str = request.form.get('subnet')
+    pools = ParentPool.query.all()
     
-    # التحقق من صحة وقواعد التضارب قبل الحفظ
     try:
         new_net = ipaddress.IPv6Network(subnet_str, strict=False)
         existing_records = NetworkRecord.query.all()
@@ -230,12 +315,12 @@ def add():
                 if new_net.overlaps(ext_net):
                     items = get_records_with_conflicts()
                     error_msg = f"الرينج {subnet_str} يتضارب مباشرة مع الرينج المضاف سابقاً ({r.subnet}) المربوط بـ {r.code}!"
-                    return render_template_string(HTML_LAYOUT, items=items, error_msg=error_msg)
+                    return render_template_string(HTML_LAYOUT, pools=pools, items=items, error_msg=error_msg)
             except ValueError:
                 continue
     except ValueError:
         items = get_records_with_conflicts()
-        return render_template_string(HTML_LAYOUT, items=items, error_msg="صيغة الـ IPv6 Prefix غير صحيحة!")
+        return render_template_string(HTML_LAYOUT, pools=pools, items=items, error_msg="صيغة الـ IPv6 Prefix غير صحيحة!")
 
     new_rec = NetworkRecord(
         code=request.form.get('code'),
@@ -250,27 +335,13 @@ def add():
     db.session.commit()
     return redirect(url_for('index'))
 
-@app.route('/suggest', methods=['POST'])
+@app.route('/delete_pool/<int:id>')
 @login_required
-def suggest():
-    parent_str = request.form.get('parent')
-    prefixlen = int(request.form.get('prefixlen'))
-    records = NetworkRecord.query.all()
-    items = get_records_with_conflicts()
-    
-    try:
-        parent_net = ipaddress.IPv6Network(parent_str, strict=False)
-        used_nets = [ipaddress.IPv6Network(r.subnet, strict=False) for r in records]
-        
-        suggested = None
-        for sub in parent_net.subnets(new_prefix=prefixlen):
-            if not any(sub.overlaps(u) for u in used_nets):
-                suggested = str(sub)
-                break
-                
-        return render_template_string(HTML_LAYOUT, items=items, suggested=suggested)
-    except Exception as e:
-        return render_template_string(HTML_LAYOUT, items=items, error_msg=f"خطأ في الرينج الرئيسي: {str(e)}")
+def delete_pool(id):
+    pool = ParentPool.query.get_or_404(id)
+    db.session.delete(pool)
+    db.session.commit()
+    return redirect(url_for('index'))
 
 @app.route('/delete/<int:id>')
 @login_required
