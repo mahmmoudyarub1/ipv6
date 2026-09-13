@@ -1,14 +1,14 @@
 version: '3.8'
 
 services:
-  ipv6-manager:
+  luxe-network-inventory:
     build: .
-    container_name: ipv6_manager_app
+    container_name: luxe_network_inventory
     ports:
       - "8787:8787"
     volumes:
-      - ipv6_data:/app/instance
+      - network_db_data:/app/instance
     restart: unless-stopped
 
 volumes:
-  ipv6_data:
+  network_db_data:
