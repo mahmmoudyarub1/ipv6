@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  ipv6-manager:
+    build: .
+    container_name: ipv6_manager_app
+    ports:
+      - "8787:8787"
+    volumes:
+      - ipv6_data:/app/instance
+    restart: unless-stopped
+
+volumes:
+  ipv6_data:
